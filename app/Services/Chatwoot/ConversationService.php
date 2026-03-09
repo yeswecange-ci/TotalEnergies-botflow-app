@@ -148,6 +148,17 @@ class ConversationService
             ];
         }
 
+        // Filtre inbox
+        $inboxId = (int) config('chatwoot.whatsapp_inbox_id') ?: null;
+        if ($inboxId) {
+            $payload[] = [
+                'attribute_key'   => 'inbox_id',
+                'filter_operator' => 'equal_to',
+                'values'          => [$inboxId],
+                'query_operator'  => !empty($payload) ? 'AND' : null,
+            ];
+        }
+
         // Fix first item should not have query_operator
         if (!empty($payload)) {
             $payload[0]['query_operator'] = null;
@@ -205,6 +216,16 @@ class ConversationService
                 'query_operator'  => null,
             ],
         ];
+
+        $inboxId = (int) config('chatwoot.whatsapp_inbox_id') ?: null;
+        if ($inboxId) {
+            $filters[] = [
+                'attribute_key'   => 'inbox_id',
+                'filter_operator' => 'equal_to',
+                'values'          => [$inboxId],
+                'query_operator'  => 'AND',
+            ];
+        }
 
         if ($status && $status !== 'all') {
             $filters[] = [

@@ -58,6 +58,12 @@ class ChatwootClient
         return "/api/v1/accounts/{$this->accountId}/{$path}";
     }
 
+    private function inboxId(): ?int
+    {
+        $id = (int) config('chatwoot.whatsapp_inbox_id');
+        return $id ?: null;
+    }
+
     // ═══════════════════════════════════════════════
     // CONVERSATIONS
     // ═══════════════════════════════════════════════
@@ -163,18 +169,20 @@ class ChatwootClient
      */
     public function getConversationCounts(): array
     {
+        $inboxFilter = array_filter(['inbox_id' => $this->inboxId()]);
+
         $openMeta = $this->client()
-            ->get($this->url('conversations'), ['status' => 'open', 'page' => 1])
+            ->get($this->url('conversations'), array_merge(['status' => 'open', 'page' => 1], $inboxFilter))
             ->throw()
             ->json('data.meta');
 
         $pendingMeta = $this->client()
-            ->get($this->url('conversations'), ['status' => 'pending', 'page' => 1])
+            ->get($this->url('conversations'), array_merge(['status' => 'pending', 'page' => 1], $inboxFilter))
             ->throw()
             ->json('data.meta');
 
         $resolvedMeta = $this->client()
-            ->get($this->url('conversations'), ['status' => 'resolved', 'page' => 1])
+            ->get($this->url('conversations'), array_merge(['status' => 'resolved', 'page' => 1], $inboxFilter))
             ->throw()
             ->json('data.meta');
 
@@ -194,11 +202,14 @@ class ChatwootClient
      */
     public function searchConversations(string $query, int $page = 1): array
     {
+        $params = array_filter([
+            'q'        => $query,
+            'page'     => $page,
+            'inbox_id' => $this->inboxId(),
+        ]);
+
         return $this->client()
-            ->get($this->url('conversations'), [
-                'q'    => $query,
-                'page' => $page,
-            ])
+            ->get($this->url('conversations'), $params)
             ->throw()
             ->json();
     }
@@ -400,7 +411,9 @@ class ChatwootClient
     public function getAgentReport(string $metric, string $since, string $until): array
     {
         return $this->client()
-            ->get($this->url('reports/agents'), compact('metric', 'since', 'until'))
+            ->get($this->url('reports/agents'), array_filter(
+                compact('metric', 'since', 'until') + ['inbox_id' => $this->inboxId()]
+            ))
             ->throw()
             ->json();
     }
@@ -410,15 +423,14 @@ class ChatwootClient
      */
     public function getAccountReport(string $metric, string $since, string $until): array
     {
-        // Endpoint Chatwoot v1 pour les séries temporelles :
-        // GET /api/v1/accounts/{id}/reports?type=account&metric=...&since=...&until=...
         return $this->client()
-            ->get($this->url('reports'), [
-                'type'   => 'account',
-                'metric' => $metric,
-                'since'  => $since,
-                'until'  => $until,
-            ])
+            ->get($this->url('reports'), array_filter([
+                'type'     => 'account',
+                'metric'   => $metric,
+                'since'    => $since,
+                'until'    => $until,
+                'inbox_id' => $this->inboxId(),
+            ]))
             ->throw()
             ->json();
     }
@@ -436,9 +448,10 @@ class ChatwootClient
 
     public function getAccountSummary(string $since, string $until): array
     {
-        // Endpoint Chatwoot v1 : GET /api/v1/accounts/{id}/reports/summary
         return $this->client()
-            ->get($this->url('reports/summary'), compact('since', 'until'))
+            ->get($this->url('reports/summary'), array_filter(
+                compact('since', 'until') + ['inbox_id' => $this->inboxId()]
+            ))
             ->throw()
             ->json();
     }
@@ -446,7 +459,9 @@ class ChatwootClient
     public function getAgentSummary(string $since, string $until): array
     {
         return $this->client()
-            ->get($this->url('reports/agents/summary'), compact('since', 'until'))
+            ->get($this->url('reports/agents/summary'), array_filter(
+                compact('since', 'until') + ['inbox_id' => $this->inboxId()]
+            ))
             ->throw()
             ->json();
     }
@@ -542,9 +557,10 @@ class ChatwootClient
 
     public function listContacts(int $page = 1, string $sortBy = '-last_activity_at', bool $includeContactInboxes = false): array
     {
-        $query = [
-            'page' => $page,
-        ];
+        $query = array_filter([
+            'page'     => $page,
+            'inbox_id' => $this->inboxId(),
+        ]);
 
         if ($sortBy) {
             $query['sort'] = $sortBy;
