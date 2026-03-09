@@ -15,7 +15,8 @@ class ConversationService
      */
     public function list(string $status = 'open', string $assigneeType = 'all', int $page = 1): array
     {
-        $response = $this->client->listConversations($status, $assigneeType, $page);
+        $inboxId  = (int) config('chatwoot.whatsapp_inbox_id') ?: null;
+        $response = $this->client->listConversations($status, $assigneeType, $page, $inboxId);
 
         return [
             'conversations' => collect($response['data']['payload'] ?? [])
