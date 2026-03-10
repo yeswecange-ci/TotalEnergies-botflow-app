@@ -180,7 +180,7 @@ class CampaignContactController extends Controller
 
         try {
             while ($page <= $maxPages) {
-                $data     = $this->chatwoot->listContacts($page, '-last_activity_at', true);
+                $data     = $this->chatwoot->listContacts($page, '-last_activity_at');
                 $contacts = $data['payload'] ?? [];
 
                 if (empty($contacts)) {
@@ -188,19 +188,6 @@ class CampaignContactController extends Controller
                 }
 
                 foreach ($contacts as $cwContact) {
-                    // Filtrer : garder uniquement les contacts qui ont un contact_inbox
-                    // correspondant à notre inbox (WhatsApp TotalEnergies CI)
-                    if ($inboxId) {
-                        $inboxes   = $cwContact['contact_inboxes'] ?? [];
-                        $inInbox   = collect($inboxes)->contains(
-                            fn($ci) => (int) ($ci['inbox']['id'] ?? $ci['inbox_id'] ?? 0) === $inboxId
-                        );
-                        if (!$inInbox) {
-                            $skipped++;
-                            continue;
-                        }
-                    }
-
                     $phone = $cwContact['phone_number'] ?? null;
                     $name  = $cwContact['name'] ?? 'Contact';
 
