@@ -33,7 +33,7 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer install --no-dev --optimize-autoloader --n
 COPY . .
 
 # Re-run composer scripts (post-autoload-dump)
-RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize
+RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize --no-scripts
 
 # Copy built assets from stage 1
 COPY --from=assets /app/public/build public/build
