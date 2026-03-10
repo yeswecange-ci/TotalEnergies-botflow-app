@@ -175,67 +175,80 @@ class CampaignContactController extends Controller
         $inboxId  = (int) config('chatwoot.whatsapp_inbox_id');
         $imported = 0;
         $skipped  = 0;
-        $page     = 1;
-        $maxPages = 100; // sécurité
+        $seen     = []; // éviter les doublons inter-pages (même contact dans plusieurs conv)
+        $maxPages = 100;
+        $statuses = ['open', 'resolved', 'pending'];
 
         try {
-            while ($page <= $maxPages) {
-                $data     = $this->chatwoot->listContacts($page, '-last_activity_at');
-                $contacts = $data['payload'] ?? [];
+            foreach ($statuses as $status) {
+                $page = 1;
 
-                if (empty($contacts)) {
-                    break;
-                }
+                while ($page <= $maxPages) {
+                    $data          = $this->chatwoot->listConversations($status, 'all', $page, $inboxId);
+                    $conversations = $data['data']['payload'] ?? [];
 
-                foreach ($contacts as $cwContact) {
-                    $phone = $cwContact['phone_number'] ?? null;
-                    $name  = $cwContact['name'] ?? 'Contact';
-
-                    if (empty($phone)) {
-                        $skipped++;
-                        continue;
+                    if (empty($conversations)) {
+                        break;
                     }
 
-                    // Normaliser le téléphone
-                    $phone = preg_replace('/[\s\-\(\)]/', '', $phone);
-                    if (!str_starts_with($phone, '+')) {
-                        $phone = '+' . $phone;
-                    }
-
-                    // Vérifier doublon
-                    $existing = Contact::where('phone_number', $phone)->first();
-                    if ($existing) {
-                        if (!$existing->chatwoot_contact_id) {
-                            $existing->update(['chatwoot_contact_id' => $cwContact['id']]);
+                    foreach ($conversations as $conv) {
+                        $sender = $conv['meta']['sender'] ?? null;
+                        if (!$sender) {
+                            $skipped++;
+                            continue;
                         }
-                        $skipped++;
-                        continue;
+
+                        $cwId  = $sender['id'] ?? null;
+                        $phone = $sender['phone_number'] ?? null;
+                        $name  = $sender['name'] ?? 'Contact';
+
+                        if (empty($phone) || isset($seen[$cwId])) {
+                            $skipped++;
+                            continue;
+                        }
+
+                        $seen[$cwId] = true;
+
+                        // Normaliser le téléphone
+                        $phone = preg_replace('/[\s\-\(\)]/', '', $phone);
+                        if (!str_starts_with($phone, '+')) {
+                            $phone = '+' . $phone;
+                        }
+
+                        // Vérifier doublon en base
+                        $existing = Contact::where('phone_number', $phone)->first();
+                        if ($existing) {
+                            if (!$existing->chatwoot_contact_id && $cwId) {
+                                $existing->update(['chatwoot_contact_id' => $cwId]);
+                            }
+                            $skipped++;
+                            continue;
+                        }
+
+                        try {
+                            Contact::create([
+                                'name'                => $name,
+                                'phone_number'        => $phone,
+                                'email'               => $sender['email'] ?? null,
+                                'chatwoot_contact_id' => $cwId,
+                                'created_by'          => Auth::id(),
+                            ]);
+                            $imported++;
+                        } catch (\Exception $e) {
+                            $skipped++;
+                        }
                     }
 
-                    try {
-                        Contact::create([
-                            'name'                => $name,
-                            'phone_number'        => $phone,
-                            'email'               => $cwContact['email'] ?? null,
-                            'chatwoot_contact_id' => $cwContact['id'],
-                            'created_by'          => Auth::id(),
-                        ]);
-                        $imported++;
-                    } catch (\Exception $e) {
-                        $skipped++;
+                    // Pagination
+                    $allCount   = $data['data']['meta']['all_count'] ?? 0;
+                    $totalPages = $allCount > 0 ? (int) ceil($allCount / 25) : 1;
+
+                    if ($page >= $totalPages) {
+                        break;
                     }
+
+                    $page++;
                 }
-
-                // Pagination
-                $meta       = $data['meta'] ?? [];
-                $total      = $meta['count'] ?? $meta['total'] ?? 0;
-                $totalPages = $total > 0 ? (int) ceil($total / 15) : 1;
-
-                if ($page >= $totalPages) {
-                    break;
-                }
-
-                $page++;
             }
 
             return response()->json([
